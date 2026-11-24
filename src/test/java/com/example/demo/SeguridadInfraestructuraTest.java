@@ -32,6 +32,32 @@ class SeguridadInfraestructuraTest {
     private static final String JSON_EDIFICIO =
             "{\"codigo\":\"ED-99\",\"nombre\":\"No Guarda\"}";
 
+    // ---------- HEALTH CHECK PUBLICO (sin JWT) ----------
+
+    /**
+     * El cron job de Render hace ping a {@code /health} cada 10 minutos para que
+     * el servicio gratuito no se duerma. Si esto devolviera 403 el job fallaria.
+     */
+    @Test
+    void healthRespondeOkSinToken() throws Exception {
+        mockMvc.perform(get("/health"))
+                .andExpect(status().isOk());
+    }
+
+    /** La raiz tambien debe ser publica: es el Health Check Path por defecto de Render. */
+    @Test
+    void raizRespondeOkSinToken() throws Exception {
+        mockMvc.perform(get("/"))
+                .andExpect(status().isOk());
+    }
+
+    /** El health check NO debe abrir el resto de la API: sigue exigiendo JWT. */
+    @Test
+    void healthPublicoNoAbreOtrasRutas() throws Exception {
+        mockMvc.perform(get("/api/reportes"))
+                .andExpect(status().isForbidden());
+    }
+
     // ---------- LECTURA (GET) ----------
 
     @Test
