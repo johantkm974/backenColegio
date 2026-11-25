@@ -42,6 +42,7 @@ public class ReporteServiceImpl implements ReporteService {
     private static final String CARPETA_CLOUDINARY = "reporta/incidencias";
     private static final String ESTADO_INICIAL = "POR_ATENDER";
     private static final Set<String> PRIORIDADES_VALIDAS = Set.of("BAJA", "MEDIA", "ALTA", "URGENTE");
+    private static final Set<String> ESTADOS_VALIDOS = Set.of("POR_ATENDER", "EN_PROCESO", "ATENDIDO", "RECHAZADO");
 
     public ReporteServiceImpl(ReporteRepository reporteRepository,
                               AmbienteRepository ambienteRepository,
@@ -163,20 +164,39 @@ public class ReporteServiceImpl implements ReporteService {
 
     @Override
     public Optional<ReporteResponse> actualizarEstado(Long id, String nuevoEstado, String observacion, Long usuarioId) {
+        String estadoNormalizado = normalizarEstado(nuevoEstado);
+        String obsLimpia = (observacion != null && !observacion.isBlank()) ? observacion.trim() : null;
+
         return reporteRepository.findById(id).map(reporte -> {
             String estadoAnterior = reporte.getEstado();
-            reporte.setEstado(nuevoEstado);
-            reporte.setObservacionAtencion(observacion);
-            reporte.setFechaActualizacion(LocalDateTime.now());
-            if ("ATENDIDO".equalsIgnoreCase(nuevoEstado) || "RECHAZADO".equalsIgnoreCase(nuevoEstado)) {
-                reporte.setFechaAtencion(LocalDateTime.now());
+            boolean estaCerrado = "ATENDIDO".equalsIgnoreCase(estadoAnterior)
+                    || "RECHAZADO".equalsIgnoreCase(estadoAnterior);
+            boolean pasaACerrado = "ATENDIDO".equalsIgnoreCase(estadoNormalizado)
+                    || "RECHAZADO".equalsIgnoreCase(estadoNormalizado);
+            boolean esReapertura = estaCerrado && !pasaACerrado;
+
+            if ((pasaACerrado || esReapertura) && obsLimpia == null) {
+                throw new IllegalArgumentException(
+                        esReapertura
+                                ? "Debe indicar el motivo para reabrir un reporte cerrado"
+                                : "Debe indicar una observación para cerrar el reporte"
+                );
             }
 
             Usuario usuario = usuarioRepository.findById(usuarioId)
                     .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
 
+            reporte.setEstado(estadoNormalizado);
+            reporte.setObservacionAtencion(obsLimpia);
+            reporte.setFechaActualizacion(LocalDateTime.now());
+            if (pasaACerrado) {
+                reporte.setFechaAtencion(LocalDateTime.now());
+            } else if (esReapertura) {
+                reporte.setFechaAtencion(null);
+            }
+
             Reporte saved = reporteRepository.save(reporte);
-            registrarHistorial(saved, usuario, estadoAnterior, nuevoEstado, observacion);
+            registrarHistorial(saved, usuario, estadoAnterior, estadoNormalizado, obsLimpia);
 
             return toResponse(saved);
         });
@@ -321,10 +341,24 @@ public class ReporteServiceImpl implements ReporteService {
         return codigo;
     }
 
+    private String normalizarEstado(String estado) {
+        if (estado == null || estado.isBlank()) {
+            throw new IllegalArgumentException("Debe indicar un estado válido");
+        }
+        String limpio = estado.trim().toUpperCase();
+        if (!ESTADOS_VALIDOS.contains(limpio)) {
+            throw new IllegalArgumentException("Estado no válido: " + estado);
+        }
+        return limpio;
+    }
+
     private void registrarHistorial(Reporte reporte, Usuario usuario, String estadoAnterior,
                                     String estadoNuevo, String comentario) {
+        String comentarioSeguro = (comentario != null && comentario.length() > 255)
+                ? comentario.substring(0, 255)
+                : comentario;
         HistorialReporte historial = new HistorialReporte(
-                reporte, usuario, estadoAnterior, estadoNuevo, comentario
+                reporte, usuario, estadoAnterior, estadoNuevo, comentarioSeguro
         );
         historialReporteRepository.save(historial);
     }
