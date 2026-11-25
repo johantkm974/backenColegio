@@ -43,10 +43,14 @@ public class SecurityConfig {
                         // Crear, editar o eliminar infraestructura: SOLO ADMIN
                         .requestMatchers("/api/edificios/**", "/api/pisos/**", "/api/ambientes/**").hasRole("ADMIN")
 
+                        // Exportar consolidado general en PDF: SOLO ADMIN y ENCARGADO
+                        .requestMatchers(HttpMethod.GET, "/api/reportes/exportar/pdf").hasAnyRole("ADMIN", "ENCARGADO")
                         // Atender / asignar reportes: SOLO ADMIN y ENCARGADO
                         .requestMatchers(HttpMethod.PATCH, "/api/reportes/*/estado", "/api/reportes/*/encargado/**").hasAnyRole("ADMIN", "ENCARGADO")
+                        // Borrar fotos de un reporte: autenticado (el servicio valida que sea el autor y estado POR_ATENDER)
+                        .requestMatchers(HttpMethod.DELETE, "/api/reportes/*/fotos").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/reportes/**").hasRole("ADMIN")
-                        // Crear y ver reportes: cualquier autenticado (incluye DOCENTE)
+                        // Crear, ver, editar (PUT) y subir fotos: cualquier autenticado
                         .requestMatchers("/api/reportes/**").authenticated()
 
                         .anyRequest().authenticated()

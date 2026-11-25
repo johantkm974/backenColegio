@@ -2,6 +2,7 @@ package com.example.demo.service;
 
 import com.example.demo.dto.ReporteRequest;
 import com.example.demo.dto.ReporteResponse;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Optional;
@@ -28,19 +29,17 @@ public interface ReporteService {
 
     ReporteResponse crear(ReporteRequest request, Long docenteId);
 
+    ReporteResponse actualizar(Long id, ReporteRequest request, Long usuarioId);
+
     Optional<ReporteResponse> actualizarEstado(Long id, String nuevoEstado, String observacion, Long usuarioId);
 
     Optional<ReporteResponse> asignarEncargado(Long id, Long encargadoId);
 
     void eliminar(Long id);
 
-    ReporteResponse subirFoto(Long id, org.springframework.web.multipart.MultipartFile foto);
+    ReporteResponse subirFoto(Long id, MultipartFile foto, Long usuarioId);
 
-    /**
-     * Sube hasta {@link #MAX_FOTOS} fotos de un reporte a Cloudinary y las
-     * registra en la tabla reporte_fotos.
-     *
-     * @throws IllegalArgumentException si la lista está vacía o supera el límite
-     */
-    ReporteResponse subirFotos(Long id, List<org.springframework.web.multipart.MultipartFile> fotos);
+    ReporteResponse subirFotos(Long id, List<MultipartFile> fotos, Long usuarioId);
+
+    ReporteResponse eliminarFotoPorUrl(Long id, String url, Long usuarioId);
 }

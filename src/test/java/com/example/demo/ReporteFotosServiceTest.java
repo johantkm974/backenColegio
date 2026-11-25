@@ -38,8 +38,9 @@ import static org.mockito.Mockito.when;
  * Tests del flujo de múltiples fotos por reporte (tabla reporte_fotos + Cloudinary).
  *
  * <p>Unit tests puros con Mockito (sin contexto Spring): verifican el límite
- * de {@link ReporteService#MAX_FOTOS} fotos y que cada foto subida quede
- * persistida en reporte_fotos con su public_id.</p>
+ * de {@link ReporteService#MAX_FOTOS} fotos, que cada foto subida quede
+ * persistida en reporte_fotos con su public_id, y el candado de edición
+ * (solo el autor y solo mientras el reporte esté en POR_ATENDER).</p>
  */
 @ExtendWith(MockitoExtension.class)
 class ReporteFotosServiceTest {
@@ -74,9 +75,15 @@ class ReporteFotosServiceTest {
                 cloudinaryService
         );
 
+        // Docente dueño del reporte de prueba (id 10)
+        Usuario docente = new Usuario();
+        docente.setId(10L);
+
         reporte = new Reporte();
         reporte.setId(1L);
         reporte.setTitulo("Luz quemada");
+        reporte.setEstado("POR_ATENDER");
+        reporte.setDocente(docente);
     }
 
     private MockMultipartFile archivo(String nombre) {
@@ -103,7 +110,7 @@ class ReporteFotosServiceTest {
                         "https://res.cloudinary.com/demo/image/upload/foto_" + inv.getArgument(0, MockMultipartFile.class).getOriginalFilename(),
                         "reporta/incidencias/" + inv.getArgument(0, MockMultipartFile.class).getOriginalFilename()));
 
-        ReporteResponse respuesta = reporteService.subirFotos(1L, List.of(archivo("a.jpg"), archivo("b.jpg")));
+        ReporteResponse respuesta = reporteService.subirFotos(1L, List.of(archivo("a.jpg"), archivo("b.jpg")), 10L);
 
         ArgumentCaptor<com.example.demo.model.ReporteFoto> captor =
                 ArgumentCaptor.forClass(com.example.demo.model.ReporteFoto.class);
@@ -129,7 +136,7 @@ class ReporteFotosServiceTest {
             seis.add(archivo("f" + i + ".jpg"));
         }
 
-        assertThrows(IllegalArgumentException.class, () -> reporteService.subirFotos(1L, seis),
+        assertThrows(IllegalArgumentException.class, () -> reporteService.subirFotos(1L, seis, 10L),
                 "6 fotos en una solicitud debe ser rechazado");
         verify(cloudinaryService, times(0)).subirFoto(any(), anyString());
     }
@@ -143,7 +150,7 @@ class ReporteFotosServiceTest {
         dos.add(archivo("x1.jpg"));
         dos.add(archivo("x2.jpg"));
 
-        assertThrows(IllegalArgumentException.class, () -> reporteService.subirFotos(1L, dos),
+        assertThrows(IllegalArgumentException.class, () -> reporteService.subirFotos(1L, dos, 10L),
                 "4 existentes + 2 nuevas = 6 debe ser rechazado");
         verify(cloudinaryService, times(0)).subirFoto(any(), anyString());
     }
@@ -152,7 +159,26 @@ class ReporteFotosServiceTest {
     void subirFotosRechazaListaVacia() {
         when(reporteRepository.findById(1L)).thenReturn(Optional.of(reporte));
 
-        assertThrows(IllegalArgumentException.class, () -> reporteService.subirFotos(1L, List.of()),
+        assertThrows(IllegalArgumentException.class, () -> reporteService.subirFotos(1L, List.of(), 10L),
                 "lista vacía debe ser rechazada");
+    }
+
+    @Test
+    void subirFotosRechazaCuandoElReporteYaEstaEnProceso() {
+        reporte.setEstado("EN_PROCESO");
+        when(reporteRepository.findById(1L)).thenReturn(Optional.of(reporte));
+
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> reporteService.subirFotos(1L, List.of(archivo("a.jpg")), 10L));
+        verify(cloudinaryService, times(0)).subirFoto(any(), anyString());
+    }
+
+    @Test
+    void subirFotosRechazaCuandoOtroUsuarioIntentaModificarElReporte() {
+        when(reporteRepository.findById(1L)).thenReturn(Optional.of(reporte));
+
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> reporteService.subirFotos(1L, List.of(archivo("a.jpg")), 99L));
+        verify(cloudinaryService, times(0)).subirFoto(any(), anyString());
     }
 }
